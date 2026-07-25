@@ -10,10 +10,15 @@ object MediaMatcher {
             if(child.isFile){
                 if(child.name == fileName){
                     return child
-                }else{
-                    findFile(child,fileName)
+                }
+            }
+            if(child.isDirectory){
+                val result = findFile(child,fileName)
+                if(result != null){
+                    return result
                 }
             }
         }
+        return null
     }
 }
