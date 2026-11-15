@@ -10,6 +10,11 @@ import androidx.documentfile.provider.DocumentFile
 
 class MainActivity : ComponentActivity() {
 
+    // SharedPreferences to store the selected folder URI
+    private val preferences by lazy {
+        getSharedPreferences("MediaSortedPrefs", MODE_PRIVATE)
+    }
+
     private val folderPicker =
         registerForActivityResult(
             ActivityResultContracts.StartActivityForResult()
@@ -27,6 +32,7 @@ class MainActivity : ComponentActivity() {
                 return@registerForActivityResult
             }
 
+            // Persist folder permissions
             contentResolver.takePersistableUriPermission(
                 treeUri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
@@ -36,6 +42,14 @@ class MainActivity : ComponentActivity() {
             Log.e("HANEESH_TEST", "PERMISSION GRANTED")
             Log.e("HANEESH_TEST", "TREE URI = $treeUri")
 
+            // Save URI in SharedPreferences
+            preferences.edit()
+                .putString("ROOT_URI", treeUri.toString())
+                .apply()
+
+            Log.e("HANEESH_TEST", "URI SAVED SUCCESSFULLY")
+
+            // Convert URI into DocumentFile
             val root = DocumentFile.fromTreeUri(this, treeUri)
 
             if (root == null) {
@@ -43,7 +57,25 @@ class MainActivity : ComponentActivity() {
                 return@registerForActivityResult
             }
 
-            StorageExplorer.explore(root)
+            Log.e("HANEESH_TEST", "DOCUMENTFILE CREATED SUCCESSFULLY")
+            val documentsFolder = StorageExplorer.getFolder(
+                this,
+                "com.whatsapp/WhatsApp/Media/WhatsApp Documents"
+            )
+
+            if (documentsFolder != null) {
+                Log.e(
+                    "HANEESH_TEST",
+                    "WHATSAPP DOCUMENTS FOLDER FOUND!"
+                )
+            } else {
+                Log.e(
+                    "HANEESH_TEST",
+                    "WHATSAPP DOCUMENTS FOLDER NOT FOUND!"
+                )
+            }
+
+            // StorageExplorer.explore(root)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {

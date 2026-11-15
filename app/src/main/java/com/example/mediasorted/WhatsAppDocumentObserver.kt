@@ -30,7 +30,7 @@ class WhatsAppDocumentObserver : FileObserver(
 
         val matchingEvent = MediaStore.pendingEvents.lastOrNull {
 
-            it.mediaType == "DOCUMENT"
+            it.mediaType == MediaType.DOCUMENT
         }
 
         if (matchingEvent != null) {

@@ -1,5 +1,6 @@
 package com.example.mediasorted
 
+
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
@@ -8,8 +9,154 @@ import android.util.Log
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import androidx.documentfile.provider.DocumentFile
 
 object FileManager {
+
+
+    fun copyDocument(
+        context: Context,
+        sourceFile: DocumentFile,
+        groupName: String
+    ): Boolean {
+
+        return try {
+
+            // Retrieve the SAF root URI
+            val preferences = context.getSharedPreferences(
+                "MediaSortedPrefs",
+                Context.MODE_PRIVATE
+            )
+
+            val rootUriString = preferences.getString("ROOT_URI", null)
+                ?: throw Exception("SAF root URI not found")
+
+            val rootUri = Uri.parse(rootUriString)
+
+            val rootFolder = DocumentFile.fromTreeUri(context, rootUri)
+                ?: throw Exception("Unable to access SAF root folder")
+
+            // Create or access MediaSorted/Documents
+            val mediaSortedFolder = getOrCreateDirectory(
+                rootFolder,
+                "MediaSorted"
+            )
+
+            val documentsFolder = getOrCreateDirectory(
+                mediaSortedFolder,
+                "Documents"
+            )
+
+            // Sanitize group name
+            val safeGroupName = groupName
+                .trim()
+                .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                .ifBlank { "Unknown" }
+
+            val groupFolder = getOrCreateDirectory(
+                documentsFolder,
+                safeGroupName
+            )
+
+            // Generate a unique filename if one already exists
+            val originalName = sourceFile.name
+                ?: throw Exception("Source filename is missing")
+
+            val destinationName = getUniqueFileName(
+                groupFolder,
+                originalName
+            )
+
+            // Create destination file
+            val destinationFile = groupFolder.createFile(
+                sourceFile.type ?: "application/octet-stream",
+                destinationName
+            ) ?: throw Exception("Unable to create destination file")
+
+            // Copy file using ContentResolver
+            val inputStream = context.contentResolver
+                .openInputStream(sourceFile.uri)
+                ?: throw Exception("Unable to open source file")
+
+            val outputStream = context.contentResolver
+                .openOutputStream(destinationFile.uri, "w")
+                ?: throw Exception("Unable to open destination file")
+
+            inputStream.use { input ->
+                outputStream.use { output ->
+                    input.copyTo(output)
+                }
+            }
+
+            Log.e(
+                "HANEESH_TEST",
+                "SAF COPY SUCCESS -> ${destinationFile.uri}"
+            )
+
+            true
+
+        } catch (e: Exception) {
+
+            Log.e(
+                "HANEESH_TEST",
+                "SAF COPY FAILED -> ${e.message}",
+                e
+            )
+
+            false
+        }
+    }
+
+
+    private fun getOrCreateDirectory(
+        parent: DocumentFile,
+        folderName: String
+    ): DocumentFile {
+
+        val existingFolder = parent.findFile(folderName)
+
+        if (existingFolder != null && existingFolder.isDirectory) {
+            return existingFolder
+        }
+
+        return parent.createDirectory(folderName)
+            ?: throw Exception("Unable to create folder: $folderName")
+    }
+
+
+    private fun getUniqueFileName(
+        folder: DocumentFile,
+        originalName: String
+    ): String {
+
+        if (folder.findFile(originalName) == null) {
+            return originalName
+        }
+
+        val dotIndex = originalName.lastIndexOf('.')
+
+        val name = if (dotIndex > 0) {
+            originalName.substring(0, dotIndex)
+        } else {
+            originalName
+        }
+
+        val extension = if (dotIndex > 0) {
+            originalName.substring(dotIndex)
+        } else {
+            ""
+        }
+
+        var counter = 1
+        var newName: String
+
+        do {
+            newName = "${name}_$counter$extension"
+            counter++
+        } while (folder.findFile(newName) != null)
+
+        return newName
+    }
 
     fun copyDocument(
         sourceFile: File,
