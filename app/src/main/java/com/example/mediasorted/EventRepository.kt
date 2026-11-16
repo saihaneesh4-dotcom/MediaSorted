@@ -21,6 +21,13 @@ class EventRepository(
         return mediaEventDao.getPendingEvents()
     }
 
+    // Find pending WhatsApp documents by filename.
+    suspend fun getPendingDocumentEventsByFileName(
+        fileName: String
+    ): List<MediaEventEntity> {
+        return mediaEventDao.getPendingDocumentEventsByFileName(fileName)
+    }
+
     // Get an event by its database ID
     suspend fun getEventById(eventId: Int): MediaEventEntity? {
         return mediaEventDao.getEventById(eventId)
@@ -44,5 +51,17 @@ class EventRepository(
     // Delete completed events
     suspend fun deleteCompletedEvents() {
         mediaEventDao.deleteCompletedEvents()
+    }
+
+    suspend fun claimEvent(eventId: Int): Int {
+        return mediaEventDao.claimEvent(eventId)
+    }
+
+    suspend fun completeEvent(eventId: Int): Int {
+        return mediaEventDao.completeEvent(eventId)
+    }
+
+    suspend fun failEvent(eventId: Int, error: String): Int {
+        return mediaEventDao.failEvent(eventId, error)
     }
 }

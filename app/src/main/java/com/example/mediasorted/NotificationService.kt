@@ -18,6 +18,27 @@ class NotificationService : NotificationListenerService() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private lateinit var eventRepository: EventRepository
+    private var documentObserver: WhatsAppDocumentObserver? = null
+
+    private fun startDocumentObserver() {
+
+        if (documentObserver != null) {
+            Log.e("HANEESH_TEST", "DOCUMENT OBSERVER ALREADY RUNNING")
+            return
+        }
+
+        val observer = WhatsAppDocumentObserver(
+            context = applicationContext,
+            eventRepository = eventRepository,
+            observerScope = serviceScope
+        )
+
+        observer.startWatching()
+
+        documentObserver = observer
+
+        Log.e("HANEESH_TEST", "DOCUMENT OBSERVER STARTED")
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -32,6 +53,17 @@ class NotificationService : NotificationListenerService() {
         super.onListenerConnected()
 
         Log.e("HANEESH_TEST", "Notification Service Connected")
+
+        startDocumentObserver()
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+
+        documentObserver?.stopWatching()
+        documentObserver = null
+
+        Log.e("HANEESH_TEST", "DOCUMENT OBSERVER STOPPED")
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
@@ -95,15 +127,22 @@ class NotificationService : NotificationListenerService() {
         Log.e("HANEESH_TEST", "MESSAGE TIME: $messageTimestamp")
 
         // Identify the media type.
+        // Extract the actual document filename, if present.
+        val documentFileName = extractDocumentFileName(messageText)
+
+        Log.e(
+            "HANEESH_TEST",
+            "EXTRACTED DOCUMENT FILENAME: $documentFileName"
+        )
+
+// Identify the media type.
         val mediaType = when {
+
             messageText.contains("photo", ignoreCase = true) -> "IMAGE"
 
             messageText.contains("video", ignoreCase = true) -> "VIDEO"
 
-            messageText.contains(".pdf", ignoreCase = true) ||
-                    messageText.contains(".doc", ignoreCase = true) ||
-                    messageText.contains(".ppt", ignoreCase = true) ||
-                    messageText.contains(".xls", ignoreCase = true) -> "DOCUMENT"
+            documentFileName != null -> "DOCUMENT"
 
             messageText.contains("voice", ignoreCase = true) -> "VOICE_NOTE"
 
@@ -132,7 +171,7 @@ class NotificationService : NotificationListenerService() {
             groupName = groupName,
             mediaType = mediaType,
             notificationText = messageText,
-            fileName = null,
+            fileName = documentFileName,
             timestamp = messageTimestamp
         )
 
@@ -163,7 +202,7 @@ class NotificationService : NotificationListenerService() {
             groupName = groupName,
             mediaType = MediaType.valueOf(mediaType),
             timestamp = messageTimestamp,
-            fileName = messageText
+            fileName = documentFileName ?: messageText
         )
 
         synchronized(MediaStore.pendingEvents) {
@@ -180,6 +219,30 @@ class NotificationService : NotificationListenerService() {
         }
     }
 
+    private fun extractDocumentFileName(messageText: String): String? {
+
+        // Remove WhatsApp's page count, such as "(32 pages)".
+        val withoutPageCount = messageText.replace(
+            Regex("""\s+\(\d+\s+pages?\)\s*$""", RegexOption.IGNORE_CASE),
+            ""
+        ).trim()
+
+        // Remove the document icon shown in WhatsApp notifications.
+        val cleanedText = withoutPageCount
+            .removePrefix("📄")
+            .trim()
+
+        // Supported document extensions.
+        val fileNameRegex = Regex(
+            """(.+\.(?:pdf|docx?|pptx?|xlsx?|txt|rtf|odt|ods|odp|csv|zip))$""",
+            RegexOption.IGNORE_CASE
+        )
+
+        return fileNameRegex.find(cleanedText)
+            ?.groupValues
+            ?.get(1)
+            ?.trim()
+    }
     private fun sha256(value: String): String {
         val bytes = MessageDigest
             .getInstance("SHA-256")
@@ -189,9 +252,12 @@ class NotificationService : NotificationListenerService() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
+        documentObserver?.stopWatching()
+        documentObserver = null
 
         serviceScope.cancel()
+
+        super.onDestroy()
 
         Log.e("HANEESH_TEST", "Notification Service Destroyed")
     }

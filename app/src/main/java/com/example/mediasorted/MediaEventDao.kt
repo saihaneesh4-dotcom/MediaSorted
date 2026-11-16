@@ -27,6 +27,56 @@ interface MediaEventDao {
     )
     suspend fun getPendingEvents(): List<MediaEventEntity>
 
+    // Find pending document events using the exact filename.
+    @Query(
+        """
+    SELECT * FROM media_events
+    WHERE fileName = :fileName
+    AND mediaType = 'DOCUMENT'
+    AND sourceApp = 'WHATSAPP'
+    AND status = 'PENDING'
+    ORDER BY timestamp ASC
+    """
+    )
+    suspend fun getPendingDocumentEventsByFileName(
+        fileName: String
+    ): List<MediaEventEntity>
+
+    // Claim an event so that only one callback can process it.
+    @Query(
+        """
+    UPDATE media_events
+    SET status = 'PROCESSING'
+    WHERE id = :eventId AND status = 'PENDING'
+    """
+    )
+    suspend fun claimEvent(eventId: Int): Int
+
+
+    // Mark an event as completed after successful copying.
+    @Query(
+        """
+    UPDATE media_events
+    SET status = 'COMPLETED',
+        lastError = NULL
+    WHERE id = :eventId AND status = 'PROCESSING'
+    """
+    )
+    suspend fun completeEvent(eventId: Int): Int
+
+
+    // Return a failed event to PENDING for a future retry.
+    @Query(
+        """
+    UPDATE media_events
+    SET status = 'PENDING',
+        retryCount = retryCount + 1,
+        lastError = :error
+    WHERE id = :eventId AND status = 'PROCESSING'
+    """
+    )
+    suspend fun failEvent(eventId: Int, error: String): Int
+
     // Retrieve an event using its ID
     @Query("SELECT * FROM media_events WHERE id = :eventId")
     suspend fun getEventById(eventId: Int): MediaEventEntity?
