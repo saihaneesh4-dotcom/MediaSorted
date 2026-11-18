@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.security.MessageDigest
+import android.os.Build
 
 class NotificationService : NotificationListenerService() {
 
@@ -19,6 +20,8 @@ class NotificationService : NotificationListenerService() {
 
     private lateinit var eventRepository: EventRepository
     private var documentObserver: WhatsAppDocumentObserver? = null
+
+    private lateinit var chatRepository: ChatRepository
 
     private fun startDocumentObserver() {
 
@@ -45,6 +48,8 @@ class NotificationService : NotificationListenerService() {
 
         val database = MediaDatabase.getDatabase(applicationContext)
         eventRepository = EventRepository(database.mediaEventDao())
+
+        chatRepository = ChatRepository(database.chatDao())
 
         Log.e("HANEESH_TEST", "Notification Service Created")
     }
@@ -78,6 +83,68 @@ class NotificationService : NotificationListenerService() {
 
         val extras = sbn.notification.extras
 
+// ==========================================
+// WHATSAPP NOTIFICATION INSPECTOR
+// ==========================================
+
+        Log.e("WA_INSPECTOR", "========== NOTIFICATION DETAILS ==========")
+
+        Log.e("WA_INSPECTOR", "PACKAGE: ${sbn.packageName}")
+        Log.e("WA_INSPECTOR", "NOTIFICATION KEY: ${sbn.key}")
+        Log.e("WA_INSPECTOR", "NOTIFICATION ID: ${sbn.id}")
+        Log.e("WA_INSPECTOR", "NOTIFICATION TAG: ${sbn.tag}")
+        Log.e("WA_INSPECTOR", "GROUP KEY: ${sbn.groupKey}")
+
+        val shortcutId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            sbn.notification.shortcutId
+                ?.takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
+
+        Log.e("WA_INSPECTOR", "SHORTCUT ID: $shortcutId")
+
+// Notification extras
+        Log.e("WA_INSPECTOR", "EXTRA KEYS: ${extras.keySet()}")
+
+        Log.e(
+            "WA_INSPECTOR",
+            "EXTRA_TITLE: ${extras.getCharSequence(Notification.EXTRA_TITLE)}"
+        )
+
+        Log.e(
+            "WA_INSPECTOR",
+            "EXTRA_CONVERSATION_TITLE: ${
+                extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)
+            }"
+        )
+
+        Log.e(
+            "WA_INSPECTOR",
+            "HAS GROUP FLAG: ${
+                extras.containsKey(Notification.EXTRA_IS_GROUP_CONVERSATION)
+            }"
+        )
+
+        Log.e(
+            "WA_INSPECTOR",
+            "IS GROUP CONVERSATION: ${
+                extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)
+            }"
+        )
+
+// Additional messaging information
+        Log.e(
+            "WA_INSPECTOR",
+            "MESSAGING USER: ${extras.get(Notification.EXTRA_MESSAGING_PERSON)}"
+        )
+
+        Log.e(
+            "WA_INSPECTOR",
+            "PEOPLE LIST: ${extras.get(Notification.EXTRA_PEOPLE_LIST)}"
+        )
+
+
         val groupName =
             extras.getCharSequence(Notification.EXTRA_TITLE)
                 ?.toString()
@@ -86,7 +153,66 @@ class NotificationService : NotificationListenerService() {
                 ?: "UNKNOWN"
 
         // Extract individual messages from MessagingStyle.
-        val messages = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+        val messages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            extras.getParcelableArray(
+                Notification.EXTRA_MESSAGES,
+                Bundle::class.java
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+        }
+
+// Inspect all messages supplied by WhatsApp
+        Log.e(
+            "WA_INSPECTOR",
+            "MESSAGE COUNT: ${messages?.size ?: 0}"
+        )
+
+        messages?.forEachIndexed { index, parcelable ->
+
+            val message = parcelable as? Bundle
+
+            if (message != null) {
+
+                Log.e("WA_INSPECTOR", "------ MESSAGE $index ------")
+
+                Log.e(
+                    "WA_INSPECTOR",
+                    "MESSAGE KEYS: ${message.keySet()}"
+                )
+
+                Log.e(
+                    "WA_INSPECTOR",
+                    "TEXT: ${message.getCharSequence("text")}"
+                )
+
+                Log.e(
+                    "WA_INSPECTOR",
+                    "SENDER: ${message.get("sender")}"
+                )
+
+                Log.e(
+                    "WA_INSPECTOR",
+                    "TIMESTAMP: ${message.getLong("time")}"
+                )
+
+                Log.e(
+                    "WA_INSPECTOR",
+                    "SENDER PERSON: ${message.get("sender_person")}"
+                )
+
+                Log.e(
+                    "WA_INSPECTOR",
+                    "MIME TYPE: ${message.getString("type")}"
+                )
+
+                Log.e(
+                    "WA_INSPECTOR",
+                    "DATA URI: ${message.get("uri")}"
+                )
+            }
+        }
 
         if (messages.isNullOrEmpty()) {
             Log.e("HANEESH_TEST", "NO INDIVIDUAL MESSAGES FOUND")
@@ -177,6 +303,19 @@ class NotificationService : NotificationListenerService() {
 
         serviceScope.launch {
             try {
+                if (shortcutId != null && groupName != "UNKNOWN") {
+
+                    val chatResult = chatRepository.registerOrUpdateChat(
+                        chatId = shortcutId,
+                        displayName = groupName
+                    )
+
+                    Log.e("CHAT_ID_TEST", "SHORTCUT ID: $shortcutId")
+                    Log.e("CHAT_ID_TEST", "CURRENT NAME: ${chatResult.chat.displayName}")
+                    Log.e("CHAT_ID_TEST", "IS NEW CHAT: ${chatResult.isNewChat}")
+                    Log.e("CHAT_ID_TEST", "NAME CHANGED: ${chatResult.nameChanged}")
+                    Log.e("CHAT_ID_TEST", "PREVIOUS NAME: ${chatResult.previousName}")
+                }
                 val insertedId = eventRepository.insertEvent(databaseEvent)
 
                 if (insertedId == -1L) {
